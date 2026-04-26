@@ -67,11 +67,21 @@ function nameKeys(fullName) {
       add(lastNoHyphen + fi);
     }
   });
-  // Full name and first+last — for CRediT statements that use complete names
-  add(parts.join(" "));           // "Zahra Quettawala Mufaddal" → zahraQuettawalaMufaddal
-  add(parts.join(""));            // joined without spaces
-  add(parts[0] + " " + last);    // "Zahra Mufaddal"
-  add(parts[0] + last);          // "ZahraMufaddal"
+  add(parts.join(" "));
+  add(parts.join(""));
+  add(parts[0] + " " + last);
+  add(parts[0] + last);
+
+  if (last.includes("-")) {
+    const lastParts = last.split("-");
+    const lastPartsI = lastParts.map(p => p[0] ? p[0].toUpperCase() : "").join("");
+    [firstInits, allFirstInits].forEach(fi => {
+      add(fi + partInits + lastPartsI);
+      add(lastPartsI + fi + partInits);
+      add(lastPartsI + fi);
+      add(fi + lastPartsI);
+    });
+  }
 
   return keys;
 }
@@ -81,12 +91,10 @@ function parseAuthorList(raw) {
   text = text.replace(/^by\s+/i, "");
   text = text.replace(/\d*\s*ORCID[iD]?\s*[\d\-]*/gi, "");
   text = text.replace(/[*\u2020\u2021\u00a7\u00b6\u00b0]/g, "");
-  // Strip academic/medical credential suffixes
   text = text.replace(/\b(MD|MBBS|PhD|Ph\.D|M\.D|DO|MSc?|BSc?|FRCS|MRCS|MBChB|MBBCh|DPhil|DrPH|MPH|MHS|DMD|DDS|RN|NP|FACS|FACP|FRCP)\b\.?/gi, "");
-  // Strip affiliation superscript numbers
   text = text.replace(/([A-Za-z])\s*\d+(?=[,;\s&]|$)/g, "$1");
-  // Strip single standalone lowercase letters (affiliation codes like a, b, c)
   text = text.replace(/\b[a-z]\b/g, "");
+  text = text.replace(/[\u2026]/g, ",");
   text = text.replace(/\band([A-Z])/g, ", $1");
   text = text.replace(/\band\b/gi, ",");
   return text.split(/[,;]+/).map(p => p.replace(/\s+/g, " ").trim()).filter(p => p.length > 2 && /[A-Za-z]{2,}/.test(p));
@@ -113,7 +121,6 @@ function parseCreditStatement(text, fullNames) {
   const otherLabels = {};
   fullNames.forEach(n => { contribs[n] = new Set(); otherLabels[n] = new Set(); });
 
-  // Normalise newlines to spaces, strip common section headings that journals prepend
   const t = text
     .replace(/[\u2013\u2014]/g, "-")
     .replace(/\r?\n/g, " ")
@@ -122,6 +129,7 @@ function parseCreditStatement(text, fullNames) {
     .replace(/^\s*Authorship\s+contributions?\s*:?\s*/i, "")
     .replace(/^\s*Contributions?\s*:?\s*/i, "")
     .trim();
+
   const rolePats = CREDIT_ROLES.flatMap(r => r.patterns.map(p => p.source)).join("|");
   const roleColonMatches = [...t.matchAll(new RegExp(`(${rolePats})\\s*:`, "gi"))];
 
@@ -129,9 +137,6 @@ function parseCreditStatement(text, fullNames) {
   if (roleColonMatches.length >= 2) {
     format = "role-first";
   } else {
-    // Role-comma: role names must appear at the START of semicolon-delimited chunks.
-    // This avoids false positives when author-first statements list roles after a colon
-    // ("Author: Role1, Role2, Role3") — those role names appear mid-sentence, not at chunk start.
     const startRoleCount = t.split(/;/).filter(chunk => {
       const c = chunk.trim();
       return c && new RegExp(`^(${rolePats})`, "i").test(c);
@@ -267,13 +272,13 @@ export default function App() {
       ),
     ];
     if (hasOther.size > 0) {
-      rows.push(["Other contributions", ...authors.map(a =>
+      rows.push(["Other contributions", "", ...authors.map(a =>
         hasOther.has(a) ? [...otherLabels[a]].join(", ") : ""
-      ), ""].join("\t"));
+      )].join("\t"));
     }
-    rows.push(["Roles per author", ...authors.map(a =>
+    rows.push(["Roles per author", "", ...authors.map(a =>
       CREDIT_ROLES.filter(r => contribs[a]?.has(r.canonical)).length || ""
-    ), ""].join("\t"));
+    )].join("\t"));
     navigator.clipboard.writeText(rows.join("\n")).then(() => {
       setCopied(true); setTimeout(() => setCopied(false), 2000);
     });
@@ -327,7 +332,7 @@ export default function App() {
 
           return <>
             <div className="info">
-              {result.authors.length} authors · {result.format === "role-comma" ? "role-comma" : formatLabel} format
+              {result.authors.length} authors · {formatLabel} format
               <span className={`badge ${result.format !== "author-first" ? "green" : ""}`}>{formatLabel}</span>
             </div>
 
@@ -407,3 +412,4 @@ export default function App() {
     </>
   );
 }
+```
